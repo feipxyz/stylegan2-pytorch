@@ -186,5 +186,8 @@ def train_from_folder(
         nprocs=world_size,
         join=True)
 
-def main():
+# def main():
+#     fire.Fire(train_from_folder)
+
+if __name__ == "__main__":
     fire.Fire(train_from_folder)
