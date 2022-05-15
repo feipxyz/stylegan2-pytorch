@@ -412,11 +412,19 @@ class AugWrapper(nn.Module):
 
 class EqualLinear(nn.Module):
     def __init__(self, in_dim, out_dim, lr_mul = 1, bias = True):
+        """equal linear的实现
+
+        :param in_dim: 输入维度
+        :param out_dim: 输出维度
+        :param lr_mul: , defaults to 1
+        :param bias: 是否有偏置, defaults to True
+        """
         super().__init__()
         self.weight = nn.Parameter(torch.randn(out_dim, in_dim))
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_dim))
 
+        # todo 这里lr_mul计算方式与StyleGAN1的区别, 
         self.lr_mul = lr_mul
 
     def forward(self, input):
@@ -424,6 +432,12 @@ class EqualLinear(nn.Module):
 
 class StyleVectorizer(nn.Module):
     def __init__(self, emb, depth, lr_mul = 0.1):
+        """将latent code映射到 W latent code
+
+        :param emb: 中间latent code维度 e.g 512
+        :param depth: 深度 e.g 8
+        :param lr_mul: , defaults to 0.1
+        """
         super().__init__()
 
         layers = []
@@ -433,6 +447,11 @@ class StyleVectorizer(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
+        """_summary_
+
+        :param x: latent code torch.Size([batch_size, in_dim])
+        :return: w latent code torch.Size([batch_size, out_dim])
+        """
         x = F.normalize(x, dim=1)
         return self.net(x)
 
@@ -1031,7 +1050,9 @@ class Trainer():
             # noise 0-1 均匀分布 torch.Size([batch_size, image_size, image_size, 1])
             noise = image_noise(batch_size, image_size, device=self.rank)
 
+            # latent space to w latent space
             w_space = latent_to_w(S, style)
+            #  w_space -> w_styles e.g [(torch.Size(5, 512), 4), (torch.Size(5, 512), 2)] -> torch.Size(5, 6, 512)
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = G(w_styles, noise)
