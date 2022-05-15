@@ -120,6 +120,7 @@ class PermuteToFrom(nn.Module):
         out = out.permute(0, 3, 1, 2)
         return out, loss
 
+# todo blur的原理
 class Blur(nn.Module):
     def __init__(self):
         super().__init__()
@@ -470,7 +471,15 @@ class RGBBlock(nn.Module):
         ) if upsample else None
 
     def forward(self, x, prev_rgb, istyle):
+        """rgbblock forward
+
+        :param x: 当前图像 e.g torch.Size([5, 512, 4, 4])
+        :param prev_rgb: 上一个block的图像 e.g None or 
+        :param istyle: 这一block的style e.g torch.Size([5, 512])
+        :return: 
+        """
         b, c, h, w = x.shape
+        # e.g torch.Size([5, 512])
         style = self.to_style(istyle)
         x = self.conv(x, style)
 
@@ -530,12 +539,14 @@ class Conv2DMod(nn.Module):
         # e.g torch.Size([5, 512, 4, 4]) -> torch.Size([1, 2560, 4, 4])
         x = x.reshape(1, -1, h, w)
 
+        # e.g ws [512, 3, 3]
         _, _, *ws = weights.shape
+        # e.g torch.Size([5, 512, 512, 3, 3]) -> torch.Size([2560, 512, 3, 3])
         weights = weights.reshape(b * self.filters, *ws)
 
         padding = self._get_same_padding(h, self.kernel, self.dilation, self.stride)
         x = F.conv2d(x, weights, padding=padding, groups=b)
-
+        # e.g torch.Size([1, 2560, 4, 4]) -> torch.Size([5, 512, 4, 4])
         x = x.reshape(-1, self.filters, h, w)
         return x
 
