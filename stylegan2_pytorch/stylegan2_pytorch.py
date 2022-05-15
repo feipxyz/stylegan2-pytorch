@@ -1025,7 +1025,10 @@ class Trainer():
 
         for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, S, G]):
             get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
+            # suppose batch_size==5
+            # style 标准正态分布 [(torch.Size([batch_size, latent_dim]), 4), (torch.Size([batch_size, latent_dim]), 2)] (tensor, layer)
             style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
+            # noise 0-1 均匀分布 torch.Size([batch_size, image_size, image_size, 1])
             noise = image_noise(batch_size, image_size, device=self.rank)
 
             w_space = latent_to_w(S, style)
