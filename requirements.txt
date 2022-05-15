@@ -1,0 +1,7 @@
+fire>=0.4.0
+retry>=0.9.2
+einops>=0.4.1
+kornia>=0.6.4
+vector-quantize-pytorch>=0.6.0
+aim>=3.9.4
+contrastive-learner>=0.1.1
