@@ -484,6 +484,16 @@ class RGBBlock(nn.Module):
 
 class Conv2DMod(nn.Module):
     def __init__(self, in_chan, out_chan, kernel, demod=True, stride=1, dilation=1, eps = 1e-8, **kwargs):
+        """调制解调模块
+
+        :param in_chan: 输入通道
+        :param out_chan: 输出通道
+        :param kernel: kernel带下
+        :param demod: 是否进行解调, defaults to True
+        :param stride: 步长, defaults to 1
+        :param dilation: , defaults to 1
+        :param eps: , defaults to 1e-8
+        """
         super().__init__()
         self.filters = out_chan
         self.demod = demod
@@ -498,16 +508,26 @@ class Conv2DMod(nn.Module):
         return ((size - 1) * (stride - 1) + dilation * (kernel - 1)) // 2
 
     def forward(self, x, y):
+        """forward
+
+        :param x: 输入图片 e.g torch.Size([5, 512, 4, 4])
+        :param y: style e.g torch.Size([5, 512])
+        :return: 输出图片
+        """
         b, c, h, w = x.shape
 
+        # e.g torch.Size([5, 1, 512, 1, 1])
         w1 = y[:, None, :, None, None]
+        # e.g torch.Size([1, 512, 512, 3, 3])
         w2 = self.weight[None, :, :, :, :]
+        # e.g torch.Size([5, 512, 512, 3, 3])
+        # todo 这里为何+1
         weights = w2 * (w1 + 1)
 
         if self.demod:
             d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdim=True) + self.eps)
             weights = weights * d
-
+        # e.g torch.Size([5, 512, 4, 4]) -> torch.Size([1, 2560, 4, 4])
         x = x.reshape(1, -1, h, w)
 
         _, _, *ws = weights.shape
@@ -521,6 +541,15 @@ class Conv2DMod(nn.Module):
 
 class GeneratorBlock(nn.Module):
     def __init__(self, latent_dim, input_channels, filters, upsample = True, upsample_rgb = True, rgba = False):
+        """图像合成的每个block
+
+        :param latent_dim: latent dim
+        :param input_channels: input channels
+        :param filters: output channels
+        :param upsample: 是否对输入进行upsample, defaults to True
+        :param upsample_rgb: 是否对rgb图像进行upsample, defaults to True
+        :param rgba: 是否输出四通道图像, defaults to False
+        """
         super().__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
@@ -536,13 +565,25 @@ class GeneratorBlock(nn.Module):
         self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
 
     def forward(self, x, prev_rgb, istyle, inoise):
+        """forward
+
+        :param x: 输入图片 e.g torch.Size([5, 512, 4, 4])
+        :param prev_rgb: _description_
+        :param istyle: style e.g torch.Size([5, 512])
+        :param inoise: e.g torch.Size([5, 128, 128, 1])
+        :return: 
+        """
         if exists(self.upsample):
             x = self.upsample(x)
 
+        # e.g torch.Size([5, 4, 4, 1])
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
+        # e.g torch.Size([5, 4, 4, 1]) -> torch.Size([5, 4, 4, 512]) -> torch.Size([5, 512, 4, 4])
         noise1 = self.to_noise1(inoise).permute((0, 3, 2, 1))
+        # e.g torch.Size([5, 4, 4, 1]) -> torch.Size([5, 4, 4, 512]) -> torch.Size([5, 512, 4, 4])
         noise2 = self.to_noise2(inoise).permute((0, 3, 2, 1))
 
+        # e.g torch.Size([5, 512])
         style1 = self.to_style1(istyle)
         x = self.conv1(x, style1)
         x = self.activation(x + noise1)
@@ -581,24 +622,39 @@ class DiscriminatorBlock(nn.Module):
 
 class Generator(nn.Module):
     def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False, attn_layers = [], no_const = False, fmap_max = 512):
+        """生成器图像合成部分
+
+        :param image_size: image size
+        :param latent_dim: latent dim
+        :param network_capacity: 网络容量, defaults to 16
+        :param transparent: 图像是否有alpla通道, defaults to False
+        :param attn_layers: ?, defaults to []
+        :param no_const: ?, defaults to False
+        :param fmap_max: ?, defaults to 512
+        """
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
         self.num_layers = int(log2(image_size) - 1)
 
+        # e.g [1024, 512, 256, 128, 64, 32]
         filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
         set_fmap_max = partial(min, fmap_max)
+        # e.g [1024, 512, 256, 128, 64, 32] -> [512, 512, 256, 128, 64, 32]
         filters = list(map(set_fmap_max, filters))
         init_channels = filters[0]
+        # e.g [512, 512, 512, 256, 128, 64, 32]
         filters = [init_channels, *filters]
 
+        # e.g [(512, 512), (512, 512), (512, 256), (256, 128), (128, 64), (64, 32)]
         in_out_pairs = zip(filters[:-1], filters[1:])
         self.no_const = no_const
 
         if no_const:
             self.to_initial_block = nn.ConvTranspose2d(latent_dim, init_channels, 4, 1, 0, bias=False)
         else:
+            # e.g torch.Size([1, 512, 4, 4])
             self.initial_block = nn.Parameter(torch.randn((1, init_channels, 4, 4)))
 
         self.initial_conv = nn.Conv2d(filters[0], filters[0], 3, padding=1)
@@ -625,6 +681,12 @@ class Generator(nn.Module):
             self.blocks.append(block)
 
     def forward(self, styles, input_noise):
+        """forward
+
+        :param styles: w latent code e.g torch.Size([5, 6, 512])
+        :param input_noise: noise e.g torch.Size([5, 128, 128, 1])
+        :return: _description_
+        """
         batch_size = styles.shape[0]
         image_size = self.image_size
 
@@ -632,9 +694,11 @@ class Generator(nn.Module):
             avg_style = styles.mean(dim=1)[:, :, None, None]
             x = self.to_initial_block(avg_style)
         else:
+            # e.g torch.Size([1, 512, 4, 4]) -> torch.Size([5, 512, 4, 4])
             x = self.initial_block.expand(batch_size, -1, -1, -1)
 
         rgb = None
+        # e.g torch.Size([5, 6, 512]) -> torch.Size([6, 5, 512])
         styles = styles.transpose(0, 1)
         x = self.initial_conv(x)
 
